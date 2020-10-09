@@ -75,11 +75,44 @@
 
         return [r, g, b];
       }
+
+      const RGBtoHSL = (r, g, b) => {
+        r /= 255;
+        g /= 255;
+        b /= 255;
+
+        const cmin = Math.min(r,g,b);
+        const cmax = Math.max(r,g,b);
+        let delta = cmax - cmin;
+
+        let [h, s, l] = [0, 0, 0];
+        if (delta == 0) h = 0;
+        else if (cmax == r) h = ((g - b) / delta) % 6;
+        else if (cmax == g) h = (b - r) / delta + 2;
+        else h = (r - g) / delta + 4;
+
+        h = Math.round(h * 60);
+        if (h < 0) h += 360;
+        l = (cmax + cmin) / 2;
+        s = delta == 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+        s = +(s * 100).toFixed(1);
+        l = +(l * 100).toFixed(1);
+
+        return [h, s, l];
+      }
+
       const getUserStream = (function setupGreenscreenEvents(){
         const backgroundForm = document.querySelector('#background-image-form');
         const [[ outputCanvas, outputContext ], [ workspaceCanvas, workspaceContext ]] = [...document.querySelectorAll('.processing canvas')].map(canvas => [canvas, canvas.getContext('2d', { alpha: false})]);
         const input = document.querySelector('.processing video');
-        let backgroundImage = null;
+        let background = {
+          x: 0,
+          y: 0,
+          lowerChroma: [75, 70, 25],
+          upperChroma: [180, 100, 75],
+          overlay: false,
+          image: null
+        };
         let frameRate = 60;
         let lastRender = 0;
 
@@ -92,14 +125,6 @@
             .filter(input => input.id !== 'image-input')
             .forEach(input => input.disabled = !enabled);
         })();
-
-        // Create worker script to handle image changes off the main thread
-        const worker = new Worker('./worker.js');
-        worker.onmessage = e => {
-          // Only message sent from worker is the updated image data
-          outputContext.putImageData(e.data, 0, 0);
-          requestAnimationFrame(render);
-        }
 
         // Toggle open/closed button text and state
         document.querySelector('.preferences button').addEventListener('click', ({ target }) => {
@@ -116,12 +141,11 @@
         // Remove current background image
         backgroundForm.querySelector('#remove-image').addEventListener('click', () => {
           setFormEnabled(backgroundForm, false);
-          backgroundImage = null;
-          worker.postMessage({ action: 'setBackgroundImage', data: null });
+          background.image = null;
           backgroundForm['image-input'].value = '';
         });
 
-        // Update worker with new image/options for image
+        // Update with new image/options for image
         backgroundForm.addEventListener('change', (e) => {
           const input = e.target;
           const name = input.id.split('-input')[0];
@@ -144,23 +168,23 @@
             case 'overlay':
               // Post updated preference:
               // value as number for x/y, true/false boolean for overlay
-              return worker.postMessage({
-                action: 'updateBackground',
-                data: {
-                  [name]: name === 'overlay' ? input.checked : parseInt(input.value) 
-                }
-              });
+              background = {
+                ...background,
+                [name]: name === 'overlay' ? input.checked : parseInt(input.value)
+              }
+              return;
             case 'lowerChroma':
             case 'upperChroma':
-              return worker.postMessage({
-                action: 'updateBackground',
-                data: { [name]: hexToRGB(input.value) }
-              });
+              background = {
+                ...background,
+                [name]: RGBtoHSL(...hexToRGB(input.value))
+              }
+              return;
             case 'width':
             case 'height':
               // Update the dimensions of the image and update the image data
-              backgroundImage[name] = parseInt(input.value);
-              return setBackgroundImage(backgroundImage);
+              background.image[name] = parseInt(input.value);
+              return setBackgroundImage(background.image);
           }
         })
 
@@ -168,23 +192,12 @@
          * Set the background image to use
          */
         const setBackgroundImage = image => {
-          const canvas = document.createElement('canvas');
-          canvas.width = image.width;
-          canvas.height = image.height;
-
-          const context = canvas.getContext('2d', { alpha: false});
-          context.drawImage(image, 0, 0, image.width, image.height);
-          worker.postMessage({
-            action: 'setBackgroundImage',
-            data: context.getImageData(0, 0, image.width, image.height)
-          });
-
           // Update form values
           backgroundForm['width-input'].value = image.width;
           backgroundForm['height-input'].value = image.height;
 
           // Save image for future resolution adjustments
-          backgroundImage = image;
+          background.image = image;
         }
 
         input.addEventListener('play', () => {
@@ -211,15 +224,47 @@
           // Stop rendering if the video is stopped
           if (input.ended || input.paused) return;
 
-          if (backgroundImage) {
+          if (background.image) {
             // Pass frame data to worker
             workspaceContext.drawImage(input, 0, 0);
-            worker.postMessage({ action: 'applyGreenscreenEffect', data: workspaceContext.getImageData(0, 0, input.videoWidth, input.videoHeight) });
-            return;
+            outputContext.drawImage(background.image, 0, 0, background.image.width, background.image.height);
+            const frame = workspaceContext.getImageData(0, 0, 320, 240)
+            const pixels = frame.data;
+            for(let i=0; i<pixels.length; i+=4) {
+              const [r, g, b] = [pixels[i], pixels[i+1], pixels[i+2]];
+              const [h, s, l] = RGBtoHSL(r, g, b);
+
+              // From: https://www.nexmo.com/blog/2020/06/24/use-a-green-screen-in-javascript-with-vonage-video
+
+              // TODO
+              // (1) The overlay is not implemented
+              // (2) x and y move the origin point but do not also extend the width/height bounds
+              // (3) Only pixels under the background image are updated from the video
+              //     the rest of the video is static
+
+              // Most is due to the fact we iterate only over the background image - many
+              // of these problems only exist due to the fact that the original implmentation
+              // iterated over the input video pixels, so iterating over the video pixels
+              // and performing the same changes below might be a solution.
+              if(h > 110 && h < 200) {
+                pixels[i+3] = 0;
+              } else {
+                outputContext.fillStyle = `rgba(${r}, ${g}, ${b}, 1)`;
+                const x = ((i/4) % frame.width) + background.x;
+                if (x < 0 || x >= frame.width) continue;
+
+                const y = Math.floor((i / 4) / frame.width) + background.y;
+                if (y < 0 || y >= frame.height) continue;
+                outputContext.fillRect(x, y, 1, 1);
+              }
+            }
+            frame.data = pixels
+          }
+          else {
+            // There is no background, pass image directly to the output canvas
+            outputContext.drawImage(input, 0, 0);
           }
 
-          // There is no background, pass image directly to the output canvas
-          outputContext.drawImage(input, 0, 0);
           requestAnimationFrame(render);
         }
 
