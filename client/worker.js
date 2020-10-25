@@ -50,8 +50,14 @@ const shouldReplaceHSL = (h, s, l) => {
 }
 
 const ACTIONS = {
-	setBackgroundImage: image => {
-		background = { ...background, image };
+	removeBackgroundImage: () => {
+		background = { ...background, image: null }
+	},
+	setBackgroundImage: ({ pixels, width, height }) => {
+		background = {
+			...background,
+			image: new ImageData(new Uint8ClampedArray(pixels), width, height)
+		};
 	},
 	updateBackground: update => {
 		for (const key of ['lowerChroma', 'upperChroma']){
@@ -84,8 +90,7 @@ const ACTIONS = {
 			pixels[i + 2] = background.image.data[bgI + 2];
 			pixels[i + 3] = background.image.data[bgI + 3];
 		}
-		image.data = pixels;
-		self.postMessage(image);
+		self.postMessage(pixels.buffer, [pixels.buffer]);
 	}
 }
 

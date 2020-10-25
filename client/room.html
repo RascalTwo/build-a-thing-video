@@ -219,13 +219,14 @@
             this.background.worker = new Worker('./worker.js');
             this.background.worker.onmessage = event => {
               // Only message sent from worker is the updated image data
-              this.background.outputContext.putImageData(event.data, 0, 0);
+              const imageData = new ImageData(new Uint8ClampedArray(event.data), this.$refs.inputVideo.width, this.$refs.inputVideo.height);
+              this.background.outputContext.putImageData(imageData, 0, 0);
               requestAnimationFrame(this.render);
             }
           },
           removeImage(){
             this.background.image = null;
-            this.background.worker.postMessage({ action: 'setBackgroundImage', data: null });
+            this.background.worker.postMessage({ action: 'removeBackgroundImage' });
             this.$refs.imageInput.value = '';
           },
           setBackgroundImage(image, limitToInputVideoSize){
@@ -253,19 +254,24 @@
             canvas.width = width;
             canvas.height = height;
 
-            const context = canvas.getContext('2d');
-            context.drawImage(image, 0, 0, width, height);
-            this.background.worker.postMessage({
-              action: 'setBackgroundImage',
-              data: context.getImageData(0, 0, width, height)
-            });
-
             // Update form values
             this.background.width = width;
             this.background.height = height;
 
             // Save image for future resolution adjustments
             this.background.image = image;
+
+            const context = canvas.getContext('2d');
+            context.drawImage(image, 0, 0, width, height);
+            const imageData = context.getImageData(0, 0, width, height);
+            this.background.worker.postMessage({
+              action: 'setBackgroundImage',
+              data: {
+                pixels: imageData.data.buffer,
+                width: imageData.width,
+                height: imageData.height
+              }
+            }, [imageData.data.buffer]);
           },
           handleBackgroundFormChange({ target: input }){
             const name = input.id.split('-input')[0];
