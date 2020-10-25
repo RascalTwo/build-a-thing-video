@@ -336,7 +336,15 @@
             if (this.background.image) {
               // Pass frame data to worker
               this.background.workspaceContext.drawImage(this.$refs.inputVideo, 0, 0);
-              this.background.worker.postMessage({ action: 'applyGreenscreenEffect', data: this.background.workspaceContext.getImageData(0, 0, this.$refs.inputVideo.videoWidth, this.$refs.inputVideo.videoHeight) });
+              const imageData = this.background.workspaceContext.getImageData(0, 0, this.$refs.inputVideo.videoWidth, this.$refs.inputVideo.videoHeight);
+              this.background.worker.postMessage({
+                action: 'applyGreenscreenEffect',
+                data: {
+                  pixels: imageData.data.buffer,
+                  width: imageData.width,
+                  height: imageData.height
+                }
+              }, [imageData.data.buffer]);
               return;
             }
 

@@ -65,30 +65,31 @@ const ACTIONS = {
 		}
 		background = { ...background, ...update};
 	},
-	applyGreenscreenEffect: image => {
-		const pixels = image.data;
-		for (let i = 0; i < pixels.length; i += 4){
+	applyGreenscreenEffect: ({ pixels: rawPixels, width, height }) => {
+		const pixels = new Uint8ClampedArray(rawPixels);
+
+		const bgPixels = background.image.data;
+		const bgWidth = background.image.width;
+		for (let i = 0; i < bgPixels.length; i += 4){
 			// x and y of pixel to take from background image
 			// Ensure both are within bounds
-			const x = ((i/4) % image.width) - background.x;
-			if (x < 0 || x >= background.image.width) continue;
+			const x = ((i/4) % bgWidth) + background.x;
+			if (x < 0 || x >= width) continue;
 
-			const y = Math.floor((i / 4) / image.width) - background.y;
-			if (y < 0 || y >= background.image.height) continue;
+			const y = Math.floor((i / 4) / bgWidth) + background.y;
+			if (y < 0 || y >= height) continue;
 
+			const fgI = y * (width * 4) + x * 4;
 			if (!background.overlay){
 				// Check if the current pixel should be overriden with background
-				const [r, g, b] = [pixels[i], pixels[i + 1], pixels[i + 2]]
-				const [h, s, l] = RGBtoHSL(r, g, b);
-				if (!shouldReplaceHSL(h, s, l)) continue;
+				if (!shouldReplaceHSL(...RGBtoHSL(pixels[fgI], pixels[fgI + 1], pixels[fgI + 2]))) continue;
 			}
 
 			// Override with background pixel
-			const bgI = y * (background.image.width * 4) + x * 4;
-			pixels[i] = background.image.data[bgI];
-			pixels[i + 1] = background.image.data[bgI + 1];
-			pixels[i + 2] = background.image.data[bgI + 2];
-			pixels[i + 3] = background.image.data[bgI + 3];
+			pixels[fgI] = bgPixels[i];
+			pixels[fgI + 1] = bgPixels[i + 1];
+			pixels[fgI + 2] = bgPixels[i + 2];
+			pixels[fgI + 3] = bgPixels[i + 3];
 		}
 		self.postMessage(pixels.buffer, [pixels.buffer]);
 	}
