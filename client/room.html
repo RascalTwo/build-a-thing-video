@@ -228,21 +228,41 @@
             this.background.worker.postMessage({ action: 'setBackgroundImage', data: null });
             this.$refs.imageInput.value = '';
           },
-          setBackgroundImage(image){
+          setBackgroundImage(image, limitToInputVideoSize){
+            let { width, height } = image;
+
+            if (limitToInputVideoSize){
+              // Reduce image size to be less then the input video size while maintaining aspect ratio
+              if (width > this.$refs.inputVideo.width){
+                const ratio = width / height;
+                width = Math.min(width, this.$refs.inputVideo.width);
+                height = width / ratio;
+              }
+
+              if (height > this.$refs.inputVideo.height){
+                const ratio = height / width;
+                height = Math.min(height, this.$refs.inputVideo.height);
+                width = height / ratio;
+              }
+
+              image.width = width;
+              image.height = height;
+            }
+
             const canvas = document.createElement('canvas');
-            canvas.width = image.width;
-            canvas.height = image.height;
+            canvas.width = width;
+            canvas.height = height;
 
             const context = canvas.getContext('2d');
-            context.drawImage(image, 0, 0, image.width, image.height);
+            context.drawImage(image, 0, 0, width, height);
             this.background.worker.postMessage({
               action: 'setBackgroundImage',
-              data: context.getImageData(0, 0, image.width, image.height)
+              data: context.getImageData(0, 0, width, height)
             });
 
             // Update form values
-            this.background.width = image.width;
-            this.background.height = image.height;
+            this.background.width = width;
+            this.background.height = height;
 
             // Save image for future resolution adjustments
             this.background.image = image;
@@ -257,7 +277,7 @@
 
                 // Convert file to image
                 const image = new Image();
-                image.onload = () => this.setBackgroundImage(image);
+                image.onload = () => this.setBackgroundImage(image, true);
                 image.src = URL.createObjectURL(imageFile);
                 return;
             }
@@ -284,7 +304,7 @@
               case 'height':
                 // Update the dimensions of the image and update the image data
                 this.background.image[name] = parseInt(input.value);
-                return this.setBackgroundImage(this.background.image);
+                return this.setBackgroundImage(this.background.image, false);
             }
           },
           handleInputPlay(){
