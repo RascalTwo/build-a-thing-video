@@ -37,7 +37,7 @@
                 <button id="remove-image" type="button" v-on:click="removeImage">Clear</button>
               </span>
 
-              <label for="overlay-input">Overlay</label>
+              <label for="overlay-input">Preview Overlay</label>
               <input id="overlay-input" type="checkbox" disabled v-model="background.forceOverlay" />
 
               <label for="x-input">X</label>
@@ -59,7 +59,17 @@
               <input id="lightestChroma-input" type="color" v-model="background.lightestChroma" />
 
               <label for="tolerance-input">Tolerance</label>
-              <input id="tolerance-input" type="number" min="0.001" max="1" step="0.001" />
+              <input id="tolerance-input" type="number" min="0.001" max="1" step="0.001" v-model="background.tolerance" />
+            </form>
+            <form v-on:change="handleOutputFormChange">
+              <label for="output-width-input">Width</label>
+              <input id="output-width-input" type="number" min="0" step="1" v-model="background.output.width" />
+
+              <label for="output-height-input">Height</label>
+              <input id="output-height-input" type="number" min="0" step="1" v-model="background.output.height" />
+
+              <label for="output-fps-input">FPS</label>
+              <input id="output-fps-input" type="number" min="0" step="1" v-model="frameRate.current" />
             </form>
           </did>
         </section>
@@ -126,9 +136,16 @@
             tolerance: 0.05,
             outputContext: undefined,
             workspaceContext: undefined,
-            worker: undefined
+            worker: undefined,
+            output: {
+              width: 0,
+              height: 0
+            }
           },
-          frameRate: 60,
+          frameRate: {
+            current: 0,
+            max: 60
+          },
           lastRender: 0
         },
         mounted(){
@@ -277,6 +294,22 @@
               }
             }, [imageData.data.buffer]);
           },
+          handleOutputFormChange({ target: input }){
+            const name = input.id.split('-input')[0].split('output-')[1];
+            switch(name){
+              case 'width':
+              case 'height':
+                const value = parseInt(input.value);
+                this.setOutputDimensions(
+                  name === 'width' ? value : this.background.output.width,
+                  name === 'height' ? value : this.background.output.height,
+                )
+                break;
+              case 'fps':
+                this.frameRate.current = parseInt(input.value);
+                break;
+            }
+          },
           handleBackgroundFormChange({ target: input }){
             const name = input.id.split('-input')[0];
 
@@ -322,21 +355,25 @@
                 return this.setBackgroundImage(this.background.image, false);
             }
           },
-          handleInputPlay(){
-            // Update dimensions of canvases and video when video metadata loads
+          setOutputDimensions(width, height){
             for (const element of [this.$refs.outputCanvas, this.$refs.workspaceCanvas, this.$refs.inputVideo]){
-              element.width = this.$refs.inputVideo.videoWidth
-              element.height = this.$refs.inputVideo.videoHeight;
+              element.width = width;
+              element.height = height;
             }
-
+            this.background.output.width = width;
+            this.background.output.height = height;
+          },
+          handleInputPlay(){
+            this.setOutputDimensions(this.$refs.inputVideo.videoWidth, this.$refs.inputVideo.videoHeight)
             // Get frame rate and start rendering
-            this.frameRate = this.$refs.inputVideo.srcObject.getVideoTracks()[0].getSettings().frameRate;
+            this.frameRate.max = this.$refs.inputVideo.srcObject.getVideoTracks()[0].getSettings().frameRate;
+            this.frameRate.current = this.frameRate.max;
             this.render();
           },
           render(){
             // Prevent rendering faster then the frame rate of the input video
             const now = performance.now();
-            if (now - this.lastRender < 1000 / this.frameRate) return requestAnimationFrame(() => this.render());
+            if (now - this.lastRender < 1000 / this.frameRate.current) return requestAnimationFrame(() => this.render());
             this.lastRender = now;
 
             // Stop rendering if the video is stopped
@@ -344,8 +381,8 @@
 
             if (this.background.image) {
               // Pass frame data to worker
-              this.background.workspaceContext.drawImage(this.$refs.inputVideo, 0, 0);
-              const imageData = this.background.workspaceContext.getImageData(0, 0, this.$refs.inputVideo.videoWidth, this.$refs.inputVideo.videoHeight);
+              this.background.workspaceContext.drawImage(this.$refs.inputVideo, 0, 0, this.background.output.width, this.background.output.height);
+              const imageData = this.background.workspaceContext.getImageData(0, 0, this.background.output.width, this.background.output.height);
               this.background.worker.postMessage({
                 action: 'applyGreenscreenEffect',
                 data: {
@@ -358,7 +395,7 @@
             }
 
             // There is no background, pass image directly to the output canvas
-            this.background.outputContext.drawImage(this.$refs.inputVideo, 0, 0);
+            this.background.outputContext.drawImage(this.$refs.inputVideo, 0, 0, this.background.output.width, this.background.output.height);
             requestAnimationFrame(() => this.render());
           },
           async getUserStream(){
