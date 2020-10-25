@@ -1,8 +1,9 @@
 let background = {
 	x: 0,
 	y: 0,
-	lowerChroma: [75, 70, 25],
-	upperChroma: [180, 100, 75],
+	darkestChroma: [0, 30, 0],
+	lightestChroma: [0, 255, 0],
+	tolerance: 0.05,
 	overlay: false,
 	image: null
 };
@@ -37,16 +38,20 @@ const RGBtoHSL = (r, g, b) => {
 	return [h, s, l];
 }
 
-/**
- * Return if the HSL pixel should be replaced
- */
-const shouldReplaceHSL = (h, s, l) => {
-	const [lh, ls, ll] = background.lowerChroma;
-	const [uh, us, ul] = background.upperChroma;
-	if (lh < uh ? (h < lh || h > uh) : h < uh || h > lh) return false;
-	if (ls < us ? (s < ls || s > us) : s < us || s > ls) return false;
-	if (ll < ul ? (l < ll || l > ul) : l < ul || l > ll) return false;
-	return true;
+const shouldReplaceRGB = (r, g, b) => {
+	const [lr, lg, lb] = background.lightestChroma;
+	const [dr, dg, db] = background.darkestChroma;
+	return (
+		distanceBetween(r, dr, lr) +
+		distanceBetween(g, dg, lg) +
+		distanceBetween(b, db, lb)
+	) / (255 * 3) < background.tolerance;
+}
+
+const distanceBetween = (value, min, max) => {
+	if (value < min) return min - value;
+	if (value > max) return value - max;
+	return 0;
 }
 
 const ACTIONS = {
@@ -60,9 +65,6 @@ const ACTIONS = {
 		};
 	},
 	updateBackground: update => {
-		for (const key of ['lowerChroma', 'upperChroma']){
-			if (update[key]) update[key] = RGBtoHSL(...update[key])
-		}
 		background = { ...background, ...update};
 	},
 	applyGreenscreenEffect: ({ pixels: rawPixels, width, height }) => {
@@ -82,7 +84,7 @@ const ACTIONS = {
 			const fgI = y * (width * 4) + x * 4;
 			if (!background.overlay){
 				// Check if the current pixel should be overriden with background
-				if (!shouldReplaceHSL(...RGBtoHSL(pixels[fgI], pixels[fgI + 1], pixels[fgI + 2]))) continue;
+				if (!shouldReplaceRGB(pixels[fgI], pixels[fgI + 1], pixels[fgI + 2])) continue;
 			}
 
 			// Override with background pixel

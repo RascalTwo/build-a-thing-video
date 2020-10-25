@@ -41,10 +41,10 @@
               <input id="overlay-input" type="checkbox" disabled v-model="background.forceOverlay" />
 
               <label for="x-input">X</label>
-              <input id="x-input" type="number" step="1" value="0" disabled v-model="background.x" />
+              <input id="x-input" type="number" step="1" disabled v-model="background.x" />
 
               <label for="y-input">Y</label>
-              <input id="y-input" type="number" step="1" value="0" disabled v-model="background.y" />
+              <input id="y-input" type="number" step="1" disabled v-model="background.y" />
 
               <label for="width-input">Width</label>
               <input id="width-input" type="number" min="0" step="1" disabled v-model="background.width" />
@@ -52,11 +52,14 @@
               <label for="height-input">Height</label>
               <input id="height-input" type="number" min="0" step="1" disabled v-model="background.height" />
 
-              <label for="lowerChroma-input">Chroma Min</label>
-              <input id="lowerChroma-input" type="color" v-model="background.lowerChroma" />
+              <label for="darkestChroma-input">Chroma Dark</label>
+              <input id="darkestChroma-input" type="color" v-model="background.darkestChroma" />
 
-              <label for="upperChroma-input">Chroma Max</label>
-              <input id="upperChroma-input" type="color" v-model="background.upperChroma" />
+              <label for="lightestChroma-input">Chroma Light</label>
+              <input id="lightestChroma-input" type="color" v-model="background.lightestChroma" />
+
+              <label for="tolerance-input">Tolerance</label>
+              <input id="tolerance-input" type="number" min="0.001" max="1" step="0.001" />
             </form>
           </did>
         </section>
@@ -118,8 +121,9 @@
             y: 0,
             width: 0,
             height: 0,
-            lowerChroma: '#63992E',
-            upperChroma: '#00FF55',
+            darkestChroma: '#63992E',
+            lightestChroma: '#00FF55',
+            tolerance: 0.05,
             outputContext: undefined,
             workspaceContext: undefined,
             worker: undefined
@@ -300,11 +304,16 @@
                     [name]: name === 'overlay' ? input.checked : parseInt(input.value)
                   }
                 });
-              case 'lowerChroma':
-              case 'upperChroma':
+              case 'darkestChroma':
+              case 'lightestChroma':
                 return this.background.worker.postMessage({
                   action: 'updateBackground',
                   data: { [name]: hexToRGB(input.value) }
+                });
+              case 'tolerance':
+                return this.background.worker.postMessage({
+                  action: 'updateBackground',
+                  data: { tolerance: parseFloat(input.value) }
                 });
               case 'width':
               case 'height':
