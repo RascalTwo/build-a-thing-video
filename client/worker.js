@@ -1,105 +1,113 @@
-let background = {
-	x: 0,
-	y: 0,
-	darkestChroma: [0, 30, 0],
-	lightestChroma: [0, 255, 0],
-	tolerance: 0.05,
-	overlay: false,
-	image: null
-};
+// Variables related to background settings, higher performance gained by
+// defining them as globals instead of packaging within objects.
+let [darkestR, darkestG, darkestB] = [0, 30, 0];
+let [lightestR, lightestG, lightestB] = [0, 255, 0];
+let chromaTolerance = 0.05;
+
+let backgroundX = 0;
+let backgroundY = 0;
+
+// Background image ImageData
+let backgroundPixels = null;
+let backgroundWidth = 0;
+let backgroundHeight = 0;
+
+let previewOverlay = false;
+
 
 /**
- * Convert RGB to HSL
- *
- * From https://css-tricks.com/converting-color-spaces-in-javascript/
+ * Return the distance the value is outside of the provided range
+ * @param {number} value Value to get the distance of
+ * @param {number} low Least of range
+ * @param {number} high Most of range
  */
-const RGBtoHSL = (r, g, b) => {
-	r /= 255;
-	g /= 255;
-	b /= 255;
+const distanceBetween = (value, low, high) =>
+	value < low
+		? low - value
+		: value > high
+			? value - high
+			: 0;
 
-	const cmin = Math.min(r,g,b);
-	const cmax = Math.max(r,g,b);
-	let delta = cmax - cmin;
-
-	let [h, s, l] = [0, 0, 0];
-	if (delta == 0) h = 0;
-	else if (cmax == r) h = ((g - b) / delta) % 6;
-	else if (cmax == g) h = (b - r) / delta + 2;
-	else h = (r - g) / delta + 4;
-
-	h = Math.round(h * 60);
-	if (h < 0) h += 360;
-	l = (cmax + cmin) / 2;
-	s = delta == 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
-	s = +(s * 100).toFixed(1);
-	l = +(l * 100).toFixed(1);
-
-	return [h, s, l];
-}
-
-const shouldReplaceRGB = (r, g, b) => {
-	const [lr, lg, lb] = background.lightestChroma;
-	const [dr, dg, db] = background.darkestChroma;
-	return (
-		distanceBetween(r, dr, lr) +
-		distanceBetween(g, dg, lg) +
-		distanceBetween(b, db, lb)
-	) / (255 * 3) < background.tolerance;
-}
-
-const distanceBetween = (value, min, max) => {
-	if (value < min) return min - value;
-	if (value > max) return value - max;
-	return 0;
-}
 
 const ACTIONS = {
+	// Remove the background image entirely
 	removeBackgroundImage: () => {
-		background = { ...background, image: null }
+		backgroundPixels = null;
+		backgroundWidth = 0;
+		backgroundHeight = 0;
 	},
-	setBackgroundImage: ({ pixels, width, height }) => {
-		background = {
-			...background,
-			image: new ImageData(new Uint8ClampedArray(pixels), width, height)
-		};
+	// Set the background image
+	setBackgroundImage: ({ buffer, width, height }) => {
+		const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
+		backgroundPixels = imageData.data;
+		backgroundWidth = imageData.width;
+		backgroundHeight = imageData.height;
 	},
-	updateBackground: update => {
-		background = { ...background, ...update};
+	// Update a background image related setting
+	updateBackgroundSettings: ({ key, value }) => {
+		switch(key){
+			case 'x':
+				backgroundX = value;
+				break;
+			case 'y':
+				backgroundY = value;
+				break;
+			case 'overlay':
+				previewOverlay = value;
+				break;
+			case 'tolerance':
+				chromaTolerance = value;
+				break;
+			case 'darkestChroma':
+			case 'lightestChroma':
+				const [r, g, b] = value;
+				if (key == 'darkestChroma') ([darkestR, darkestG, darkestB] = [r, g, b])
+				else if (key === 'lightestChroma') ([lightestR, lightestG, lightestB] = [r, g, b])
+				break;
+		}
 	},
-	applyGreenscreenEffect: ({ pixels: rawPixels, width, height }) => {
-		const pixels = new Uint8ClampedArray(rawPixels);
+	// Apply the greenscreen effect to the provided imagedata
+	applyGreenscreenEffect: ({ buffer, width, height }) => {
+		const foregroundPixels = new Uint8ClampedArray(buffer);
 
-		const bgPixels = background.image.data;
-		const bgWidth = background.image.width;
-		for (let i = 0; i < bgPixels.length; i += 4){
+		const length = backgroundPixels.length;
+		for (let i = 0; i < length; i += 4){
 			// x and y of pixel to take from background image
 			// Ensure both are within bounds
-			const x = ((i/4) % bgWidth) + background.x;
+			const x = ((i/4) % backgroundWidth) + backgroundX;
 			if (x < 0 || x >= width) continue;
 
-			const y = Math.floor((i / 4) / bgWidth) + background.y;
+			const y = Math.floor((i / 4) / backgroundWidth) + backgroundY;
 			if (y < 0 || y >= height) continue;
 
-			const fgI = y * (width * 4) + x * 4;
-			if (!background.overlay){
+			const foregroundI = y * (width * 4) + x * 4;
+			if (!previewOverlay){
 				// Check if the current pixel should be overriden with background
-				if (!shouldReplaceRGB(pixels[fgI], pixels[fgI + 1], pixels[fgI + 2])) continue;
+				if ((
+					distanceBetween(foregroundPixels[foregroundI], darkestR, lightestR) +
+					distanceBetween(foregroundPixels[foregroundI + 1], darkestG, lightestG) +
+					distanceBetween(foregroundPixels[foregroundI + 2], darkestB, lightestB)
+				) / (255 * 3) >= chromaTolerance) continue;
 			}
 
 			// Override with background pixel
-			pixels[fgI] = bgPixels[i];
-			pixels[fgI + 1] = bgPixels[i + 1];
-			pixels[fgI + 2] = bgPixels[i + 2];
-			pixels[fgI + 3] = bgPixels[i + 3];
+			foregroundPixels[foregroundI] = backgroundPixels[i];
+			foregroundPixels[foregroundI + 1] = backgroundPixels[i + 1];
+			foregroundPixels[foregroundI + 2] = backgroundPixels[i + 2];
+			foregroundPixels[foregroundI + 3] = backgroundPixels[i + 3];
 		}
-		self.postMessage(pixels.buffer, [pixels.buffer]);
+		self.postMessage({
+			buffer: foregroundPixels.buffer,
+			width, height
+		}, [foregroundPixels.buffer]);
 	}
 }
 
 self.addEventListener('message', event => {
-	const { action, data } = event.data;
+	const { action } = event.data;
 
-	if (ACTIONS[action]) ACTIONS[action](data);
+	// Call action function if it exists, otherwise log it
+	// Local tests show this object-map has higher performance then switch-case and if-else
+	if (ACTIONS[action]) ACTIONS[action](event.data.data);
 	else console.error(`Unknown action: ${action}`);
 });
