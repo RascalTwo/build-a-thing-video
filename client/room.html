@@ -28,7 +28,7 @@
           <button @click="background.open = !background.open">{{ background.open ? 'Close' : 'Customize Background' }}</button>
           <div class="content" ref="backgroundContent">
             <video  class="hidden"  ref="inputVideo"      :width="output.width" :height="output.height" autoplay @play="handleInputPlay" ></video>
-            <canvas class="preview" ref="outputCanvas"    :width="output.width" :height="output.height"></canvas>
+            <canvas class="preview" ref="outputCanvas"    :width="output.width" :height="output.height" @click="handlePreviewClick" :style="{ cursor: background.picking ? 'crosshair' : 'unset' }"></canvas>
             <canvas class="hidden"  ref="workspaceCanvas" :width="output.width" :height="output.height"></canvas>
             <button @click="output.playing = !output.playing">{{ output.playing ? 'Pause' : 'Play' }}</button>
             <form autocomplete="off" ref="backgroundForm">
@@ -58,10 +58,16 @@
                   <input id="height-input" type="number" min="0" step="1" :disabled="!background.image" v-model.number="background.values.height" />
 
                   <label for="darkestChroma-input">Chroma Dark</label>
-                  <input id="darkestChroma-input" type="color" :disabled="!background.image" v-model="background.values.darkestChroma" />
+                  <span>
+                    <input id="darkestChroma-input" type="color" :disabled="!background.image" v-model="background.values.darkestChroma" />
+                    <button @click="handlePickButton('darkestChroma')" type="button" :disabled="!background.image">{{ background.picking === 'darkestChroma' ? 'Stop Picking' : 'Pick' }}</button>
+                  </span>
 
                   <label for="lightestChroma-input">Chroma Light</label>
-                  <input id="lightestChroma-input" type="color" :disabled="!background.image" v-model="background.values.lightestChroma" />
+                  <span>
+                    <input id="lightestChroma-input" type="color" :disabled="!background.image" v-model="background.values.lightestChroma" />
+                    <button @click="handlePickButton('lightestChroma')" type="button" :disabled="!background.image">{{ background.picking === 'lightestChroma' ? 'Stop Picking' : 'Pick' }}</button>
+                  </span>
 
                   <label for="tolerance-input">Tolerance</label>
                   <input id="tolerance-input" type="number" min="0.0001" max="1" step="0.001" :disabled="!background.image" v-model.number="background.values.tolerance" />
@@ -106,6 +112,17 @@
        */
       const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
+      /**
+       * Convert number to two-lenghed hex string
+       */
+      const componentToHex = c => c.toString(16).padStart(2, '0')
+
+      /**
+       * Convert RGB to Hex
+       */
+      const rgbToHex = (r, g, b) => '#' + componentToHex(r) + componentToHex(g) + componentToHex(b)
+
+
       const app = new Vue({
         el: '#app',
         data: {
@@ -128,6 +145,7 @@
               lightestChroma: '#00FF55',
               tolerance: 0.05,
             },
+            picking: null,
             image: undefined,
             open: false,
             context: undefined,
@@ -313,6 +331,21 @@
               default:
                 console.error(`Unexpected background setting key: ${key}`)
             }
+          },
+          handlePickButton(which) {
+            this.background.picking = this.background.picking === which ? null : which
+          },
+          handlePreviewClick({ clientX, clientY, target }) {
+            // Get the X and Y of the real image from the clicked canvas
+            const rect = target.getBoundingClientRect()
+            const widthRatio = this.output.width / rect.width
+            const heightRatio = this.output.height / rect.height
+            const x = (event.clientX - rect.left) * widthRatio
+            const y = (event.clientY - rect.top) * heightRatio
+
+            // Get the clicked pixel and set the current picking color to it's hex value
+            const pixel = this.output.context.getImageData(x, y, 1, 1).data
+            this.background.values[this.background.picking] = rgbToHex(...pixel)
           },
           handleInputPlay() {
             // Get metadata from video and start rendering
