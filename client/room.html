@@ -38,7 +38,7 @@
 
                   <label for="image-input">Image</label>
                   <span>
-                    <input id="image-input" type="file" ref="imageInput" @change="handleBackgroundImageChange" />
+                    <input id="image-input" type="file" accept="image/*" ref="imageInput" @change="handleBackgroundImageChange" />
                     <button id="remove-image" type="button" @click="removeBackgroundImage">Clear</button>
                   </span>
 
@@ -104,7 +104,7 @@
       /**
        * Create Promise that delays by ms
        */
-      const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
       const app = new Vue({
         el: '#app',
@@ -142,20 +142,24 @@
           },
           lastRender: 0
         },
-        mounted(){
-          this.output.context = this.$refs.outputCanvas.getContext('2d');
-          this.background.context = this.$refs.workspaceCanvas.getContext('2d');
+        mounted() {
+          // Store the context of both canvases
+          this.output.context = this.$refs.outputCanvas.getContext('2d')
+          this.background.context = this.$refs.workspaceCanvas.getContext('2d')
         },
         async created() {
-          this.spawnWorker();
+          this.spawnWorker()
+          // Add watcher for each background value that
+          // calls updateBackgroundSetting with the matching key
           Object.entries(this.background.values).forEach(([key, value]) =>
             this.$watch(`background.values.${key}`, (...args) => this.updateBackgroundSetting(key, ...args))
-          );
+          )
+
           this.resp = await fetch(`/api/session?room=${this.params.id}&code=${this.params.code}`).then(r => r.json())
           const { apiKey, sessionId, token, locked, access } = this.resp
           if(!access) window.location.replace(`/access-required?id=${this.params.id}&username=${this.params.username}`)
           this.session = OT.initSession(apiKey, sessionId)
-          const userStream = await this.getUserStream();
+          const userStream = await this.getUserStream()
           this.camera = OT.initPublisher('publishers', { mirror: false, name: this.params.username, insertMode: 'append', videoSource: userStream.getVideoTracks()[0], audioSource: userStream.getAudioTracks()[0] })
           this.roomLocked = locked
           this.setLock(this.roomLocked,(this.params.code ? this.params.code : ""))
@@ -202,63 +206,71 @@
             })
             this.setLock(this.roomLocked, this.inputAccessCode)
           },
-          spawnWorker(){
-            this.background.worker = new Worker('./worker.js');
-            this.background.worker.addEventListener('message', ({ data }) => {
-              // Only message sent from worker is the updated image data
-              this.output.context.putImageData(new ImageData(new Uint8ClampedArray(data.buffer), data.width, data.height), 0, 0);
-            });
+          spawnWorker() {
+            this.background.worker = new Worker('./worker.js')
+            this.background.worker.addEventListener('message', ({ data }) =>
+              // Only message sent from worker is the updated image data,
+              // so it can be directly constructed and put on the image
+              this.output.context.putImageData(new ImageData(new Uint8ClampedArray(data.buffer), data.width, data.height), 0, 0)
+            )
           },
-          async getUserStream(){
-            const inputStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            this.$refs.inputVideo.srcObject = inputStream;
+          async getUserStream() {
+            // Get a video device from the user, setting the <video> src to it.
+            const inputStream = await navigator.mediaDevices.getUserMedia({ video: true })
+            this.$refs.inputVideo.srcObject = inputStream
 
-            const stream = this.$refs.outputCanvas.captureStream();
-            const audioTracks = (this.$refs.inputVideo.audioTracks || []);
-            if (audioTracks.length) stream.addTrack(audioTracks[0]);
-            return stream;
+            // Get the stream from the output canvas, and add all audio tracks
+            // found on the video source
+            const stream = this.$refs.outputCanvas.captureStream()
+            const audioTracks = (this.$refs.inputVideo.audioTracks || [])
+            audioTracks.forEach(audioTrack => stream.addTrack(audioTrack))
+            return stream
           },
-          removeBackgroundImage(){
-            this.background.image = null;
-            this.background.worker.postMessage({ action: 'removeBackgroundImage' });
-            this.$refs.imageInput.value = '';
+          removeBackgroundImage() {
+            // Remove the background image, update the worker, and clear the file <input> value
+            this.background.image = null
+            this.background.worker.postMessage({ action: 'removeBackgroundImage' })
+            this.$refs.imageInput.value = ''
           },
-          setBackgroundImage(image, limitToInputVideoSize){
-            let { width, height } = image;
+          setBackgroundImage(image, limitToInputVideoSize) {
+            // Set the background image, optionally scaling it down
+            let { width, height } = image
 
-            if (limitToInputVideoSize){
+            if (limitToInputVideoSize) {
               // Reduce image size to be less then the input video size while maintaining aspect ratio
-              if (width > this.$refs.inputVideo.width){
-                const ratio = width / height;
-                width = Math.min(width, this.$refs.inputVideo.width);
-                height = width / ratio;
+              // First by width, then by height
+              if (width > this.$refs.inputVideo.width) {
+                const ratio = width / height
+                width = Math.min(width, this.$refs.inputVideo.width)
+                height = width / ratio
               }
 
-              if (height > this.$refs.inputVideo.height){
-                const ratio = height / width;
-                height = Math.min(height, this.$refs.inputVideo.height);
-                width = height / ratio;
+              if (height > this.$refs.inputVideo.height) {
+                const ratio = height / width
+                height = Math.min(height, this.$refs.inputVideo.height)
+                width = height / ratio
               }
 
-              image.width = width;
-              image.height = height;
+              image.width = width
+              image.height = height
             }
 
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-
             // Update form values
-            this.background.values.width = width;
-            this.background.values.height = height;
+            this.background.values.width = width
+            this.background.values.height = height
 
             // Save image for future resolution adjustments
-            this.background.image = image;
+            this.background.image = image
 
-            const context = canvas.getContext('2d');
-            context.drawImage(image, 0, 0, width, height);
+            // Obtain image data for image, and send it to the web worker
+            const canvas = document.createElement('canvas')
+            canvas.width = width
+            canvas.height = height
 
-            const imageData = context.getImageData(0, 0, width, height);
+            const context = canvas.getContext('2d')
+            context.drawImage(image, 0, 0, width, height)
+            const imageData = context.getImageData(0, 0, width, height)
+
             this.background.worker.postMessage({
               action: 'setBackgroundImage',
               data: {
@@ -266,20 +278,20 @@
                 width: imageData.width,
                 height: imageData.height
               }
-            }, [imageData.data.buffer]);
+            }, [imageData.data.buffer])
           },
-          handleBackgroundImageChange({ target: { files }}){
-            if (!files.length) return;
-
-            const imageFile = files[0];
+          handleBackgroundImageChange({ target: { files: [imageFile] }}) {
+            // Whenever the file <input> changes, set the background image to the first image
+            if (!imageFile) return this.removeBackgroundImage()
 
             // Convert file to image
-            const image = new Image();
-            image.onload = () => this.setBackgroundImage(image, true);
-            image.src = URL.createObjectURL(imageFile);
+            const image = new Image()
+            image.onload = () => this.setBackgroundImage(image, true)
+            image.src = URL.createObjectURL(imageFile)
           },
-          updateBackgroundSetting(key, value){
-            if (value === '') return;
+          updateBackgroundSetting(key, value) {
+            // Handle all backround setting updates
+            if (value === '') return
 
             switch(key){
               case 'x':
@@ -288,80 +300,82 @@
               case 'previewOverlay':
               case 'darkestChroma':
               case 'lightestChroma':
+                // Send updated value straight to web worker
                 return this.background.worker.postMessage({
                   action: 'updateBackgroundSettings',
                   data: { key, value }
-                });
+                })
               case 'width':
               case 'height':
-                // Update the dimensions of the image and update the image data
-                this.background.image[key] = value;
-                return this.setBackgroundImage(this.background.image, false);
+                // Update the dimensions of the image, then update web worker
+                this.background.image[key] = value
+                return this.setBackgroundImage(this.background.image, false)
               default:
-                console.error(`Unexpected background setting key: ${key}`);
+                console.error(`Unexpected background setting key: ${key}`)
             }
           },
-          handleInputPlay(){
-            this.output.playing = true;
-            this.output.width = this.$refs.inputVideo.videoWidth;
-            this.output.height = this.$refs.inputVideo.videoHeight;
-            // Get frame rate and start rendering
-            this.output.frameRate = this.$refs.inputVideo.srcObject.getVideoTracks()[0].getSettings().frameRate;
-            this.renderFrame();
+          handleInputPlay() {
+            // Get metadata from video and start rendering
+            this.output.playing = true
+            this.output.width = this.$refs.inputVideo.videoWidth
+            this.output.height = this.$refs.inputVideo.videoHeight
+            this.output.frameRate = this.$refs.inputVideo.srcObject.getVideoTracks()[0].getSettings().frameRate
+            this.renderFrame()
           },
-          renderFrame(){
+          renderFrame() {
             // Prevent rendering faster then the frame rate of the input video
-            const now = performance.now();
-            if (now - this.lastRender < 1000 / this.output.frameRate) return requestAnimationFrame(this.renderFrame);
-            this.lastRender = now;
+            const now = performance.now()
+            if (now - this.lastRender < 1000 / this.output.frameRate) return requestAnimationFrame(this.renderFrame)
+            this.lastRender = now
 
             // Stop rendering if the video is stopped
-            if (this.$refs.inputVideo.ended) return;
+            if (this.$refs.inputVideo.ended) return
 
             if (this.background.image) {
               // Pass frame data to worker
-              this.background.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height);
+              this.background.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height)
 
-              const { data: { buffer }, width, height } = this.background.context.getImageData(0, 0, this.output.width, this.output.height);
+              const { data: { buffer }, width, height } = this.background.context.getImageData(0, 0, this.output.width, this.output.height)
               this.background.worker.postMessage({
                 action: 'applyGreenscreenEffect',
                 data: { buffer, width, height }
-              }, [buffer]);
+              }, [buffer])
             }
-            else{
-              this.output.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height);
+            else {
+              // Otherwise draw actual raw frame
+              this.output.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height)
             }
 
-            requestAnimationFrame(this.renderFrame);
+            requestAnimationFrame(this.renderFrame)
           }
         },
         watch: {
-          'output.playing'(playing){
-            if (playing) this.$refs.inputVideo.play();
-            else this.$refs.inputVideo.pause();
+          'output.playing'(playing) {
+            // Pause/Play the video based on the status of output.playing
+            if (playing) this.$refs.inputVideo.play()
+            else this.$refs.inputVideo.pause()
           },
-          async 'background.open'(open){
-            const content = this.$refs.backgroundContent;
+          async 'background.open'(open) {
+            const content = this.$refs.backgroundContent
 
-            if (!open) {
-              content.style.maxHeight = null;
-              await delay(1800);
-              content.classList.toggle('opened');
-            }
-            else {
-              content.classList.toggle('opened');
-              await delay(1);
+            if (open) {
+              content.classList.toggle('opened')
+              await delay(1)
               content.style.maxHeight = content.scrollHeight + 'px'
-              return;
+              return
             }
 
-            // Disable overlay when closing
-            this.background.values.previewOverlay = false;
+            content.style.maxHeight = null
+            await delay(1800)
+            content.classList.toggle('opened')
+
+            // Disable overlay and un-pause video when closing
+            this.background.values.previewOverlay = false
             this.background.worker.postMessage({
               action: 'updateBackgroundSettings',
               data: { key: 'previewOverlay', value: false }
-            });
-            this.output.playing = true;
+            })
+            this.output.playing = true
           }
         },
         computed: {
