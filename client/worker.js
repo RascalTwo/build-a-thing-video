@@ -2,7 +2,7 @@
 // defining them as globals instead of packaging within objects.
 let [darkestR, darkestG, darkestB] = [0, 30, 0];
 let [lightestR, lightestG, lightestB] = [0, 255, 0];
-let chromaTolerance = 0.05;
+let chromaTolerance = 0.05 * 255 * 3;
 
 let backgroundX = 0;
 let backgroundY = 0;
@@ -12,7 +12,7 @@ let backgroundPixels = null;
 let backgroundWidth = 0;
 let backgroundHeight = 0;
 
-let previewOverlay = false;
+let checkChroma = true;
 
 
 /**
@@ -68,10 +68,10 @@ const ACTIONS = {
 				backgroundY = value;
 				break;
 			case 'previewOverlay':
-				previewOverlay = value;
+				checkChroma = !value;
 				break;
 			case 'tolerance':
-				chromaTolerance = value;
+				chromaTolerance = value * 255 * 3;
 				break;
 			case 'darkestChroma':
 			case 'lightestChroma':
@@ -87,31 +87,27 @@ const ACTIONS = {
 	applyGreenscreenEffect: ({ buffer, width, height }) => {
 		const foregroundPixels = new Uint8ClampedArray(buffer);
 
-		const length = backgroundPixels.length;
-		for (let i = 0; i < length; i += 4){
-			// x and y of pixel to take from background image
-			// Ensure both are within bounds
-			const x = ((i/4) % backgroundWidth) + backgroundX;
-			if (x < 0 || x >= width) continue;
-
-			const y = Math.floor((i / 4) / backgroundWidth) + backgroundY;
-			if (y < 0 || y >= height) continue;
-
+		const length = backgroundPixels.length / 4;
+		for (let i = 0; i < length; i++){
+			const x = (i % backgroundWidth) + backgroundX;
+			const y = ~~(i / backgroundWidth) + backgroundY;
 			const foregroundI = y * (width * 4) + x * 4;
-			if (!previewOverlay){
-				// Check if the current pixel should be overriden with background
-				if ((
+			if (checkChroma && (
 					distanceBetween(foregroundPixels[foregroundI], darkestR, lightestR) +
 					distanceBetween(foregroundPixels[foregroundI + 1], darkestG, lightestG) +
 					distanceBetween(foregroundPixels[foregroundI + 2], darkestB, lightestB)
-				) / (255 * 3) >= chromaTolerance) continue;
-			}
-
+					>= chromaTolerance
+				)
+			) continue;
 			// Override with background pixel
-			foregroundPixels[foregroundI] = backgroundPixels[i];
-			foregroundPixels[foregroundI + 1] = backgroundPixels[i + 1];
-			foregroundPixels[foregroundI + 2] = backgroundPixels[i + 2];
-			foregroundPixels[foregroundI + 3] = backgroundPixels[i + 3];
+
+			// Despite the expectancy:
+			//   foregroundPixels.set(backgroundPixels.slice(i, i + 4), foregroundI);
+			// does not offer better performance
+			const i4 = i * 4;
+			foregroundPixels[foregroundI] = backgroundPixels[i4];
+			foregroundPixels[foregroundI + 1] = backgroundPixels[i4 + 1];
+			foregroundPixels[foregroundI + 2] = backgroundPixels[i4 + 2];
 		}
 		self.postMessage({
 			buffer: foregroundPixels.buffer,
