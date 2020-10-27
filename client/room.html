@@ -25,51 +25,61 @@
           <div id="subscribers"></div>
         </section>
         <section class="background-preferences">
-          <button v-on:click="toggleBackgroundForm">Customize Background</button>
+          <button @click="background.open = !background.open">{{ background.open ? 'Close' : 'Customize Background' }}</button>
           <div class="content" ref="backgroundContent">
-            <video autoplay class="hidden" ref="inputVideo" v-on:play="handleInputPlay"></video>
-            <canvas class="preview" ref="outputCanvas"></canvas>
-            <canvas class="hidden" ref="workspaceCanvas"></canvas>
-            <form id="background-image-form" autocomplete="off" ref="backgroundForm" v-on:change="handleBackgroundFormChange">
-              <label for="image-input">Background Image</label>
-              <span>
-                <input id="image-input" type="file" ref="imageInput" />
-                <button id="remove-image" type="button" v-on:click="removeImage">Clear</button>
-              </span>
+            <video  class="hidden"  ref="inputVideo"      :width="output.width" :height="output.height" autoplay @play="handleInputPlay" ></video>
+            <canvas class="preview" ref="outputCanvas"    :width="output.width" :height="output.height"></canvas>
+            <canvas class="hidden"  ref="workspaceCanvas" :width="output.width" :height="output.height"></canvas>
+            <button @click="output.playing = !output.playing">{{ output.playing ? 'Pause' : 'Play' }}</button>
+            <form autocomplete="off" ref="backgroundForm">
+              <fieldset>
+                <legend>Background</legend>
+                <span>
 
-              <label for="overlay-input">Preview Overlay</label>
-              <input id="overlay-input" type="checkbox" disabled v-model="background.forceOverlay" />
+                  <label for="image-input">Image</label>
+                  <span>
+                    <input id="image-input" type="file" ref="imageInput" @change="handleBackgroundImageChange" />
+                    <button id="remove-image" type="button" @click="removeBackgroundImage">Clear</button>
+                  </span>
 
-              <label for="x-input">X</label>
-              <input id="x-input" type="number" step="1" disabled v-model="background.x" />
+                  <label for="preview-overlay-input">Preview Overlay</label>
+                  <input id="preview-overlay-input" type="checkbox" :disabled="!background.image" v-model="background.values.previewOverlay" />
 
-              <label for="y-input">Y</label>
-              <input id="y-input" type="number" step="1" disabled v-model="background.y" />
+                  <label for="x-input">X</label>
+                  <input id="x-input" type="number" step="1" :disabled="!background.image" v-model.number="background.values.x" />
 
-              <label for="width-input">Width</label>
-              <input id="width-input" type="number" min="0" step="1" disabled v-model="background.width" />
+                  <label for="y-input">Y</label>
+                  <input id="y-input" type="number" step="1" :disabled="!background.image" v-model.number="background.values.y" />
 
-              <label for="height-input">Height</label>
-              <input id="height-input" type="number" min="0" step="1" disabled v-model="background.height" />
+                  <label for="width-input">Width</label>
+                  <input id="width-input" type="number" min="0" step="1" :disabled="!background.image" v-model.number="background.values.width" />
 
-              <label for="darkestChroma-input">Chroma Dark</label>
-              <input id="darkestChroma-input" type="color" v-model="background.darkestChroma" />
+                  <label for="height-input">Height</label>
+                  <input id="height-input" type="number" min="0" step="1" :disabled="!background.image" v-model.number="background.values.height" />
 
-              <label for="lightestChroma-input">Chroma Light</label>
-              <input id="lightestChroma-input" type="color" v-model="background.lightestChroma" />
+                  <label for="darkestChroma-input">Chroma Dark</label>
+                  <input id="darkestChroma-input" type="color" :disabled="!background.image" v-model="background.values.darkestChroma" />
 
-              <label for="tolerance-input">Tolerance</label>
-              <input id="tolerance-input" type="number" min="0.001" max="1" step="0.001" v-model="background.tolerance" />
-            </form>
-            <form v-on:change="handleOutputFormChange">
-              <label for="output-width-input">Width</label>
-              <input id="output-width-input" type="number" min="0" step="1" v-model="background.output.width" />
+                  <label for="lightestChroma-input">Chroma Light</label>
+                  <input id="lightestChroma-input" type="color" :disabled="!background.image" v-model="background.values.lightestChroma" />
 
-              <label for="output-height-input">Height</label>
-              <input id="output-height-input" type="number" min="0" step="1" v-model="background.output.height" />
+                  <label for="tolerance-input">Tolerance</label>
+                  <input id="tolerance-input" type="number" min="0.0001" max="1" step="0.001" :disabled="!background.image" v-model.number="background.values.tolerance" />
+                </span>
+              </fieldset>
+              <fieldset>
+                <legend>Output</legend>
+                <span>
+                  <label for="output-width-input">Width</label>
+                  <input id="output-width-input" type="number" min="0" step="1" v-model.number="output.width" />
 
-              <label for="output-fps-input">FPS</label>
-              <input id="output-fps-input" type="number" min="0" step="1" v-model="frameRate.current" />
+                  <label for="output-height-input">Height</label>
+                  <input id="output-height-input" type="number" min="0" step="1" v-model.number="output.height" />
+
+                  <label for="output-fps-input">FPS</label>
+                  <input id="output-fps-input" type="number" min="0" step="1" v-model.number="output.frameRate" />
+                </span>
+              </fieldset>
             </form>
           </did>
         </section>
@@ -92,21 +102,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.js"></script>
     <script>
       /**
-       * Convert hexcode color to RGB
-       *
-       * From https://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
-       */
-      const hexToRGB = hex => {
-        if (hex[0] == '#') hex = hex.substring(1);
-        const bigint = parseInt(hex, 16);
-        const r = (bigint >> 16) & 255;
-        const g = (bigint >> 8) & 255;
-        const b = bigint & 255;
-
-        return [r, g, b];
-      }
-
-      /**
        * Create Promise that delays by ms
        */
       const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -123,37 +118,39 @@
           messages: [],
           newMessage: '',
           background: {
-            forceOverlay: false,
-            getUserStream: null,
-            open: false,
+            values: {
+              previewOverlay: false,
+              x: 0,
+              y: 0,
+              width: 0,
+              height: 0,
+              darkestChroma: '#63992E',
+              lightestChroma: '#00FF55',
+              tolerance: 0.05,
+            },
             image: undefined,
-            x: 0,
-            y: 0,
+            open: false,
+            context: undefined,
+            worker: undefined
+          },
+          output: {
             width: 0,
             height: 0,
-            darkestChroma: '#63992E',
-            lightestChroma: '#00FF55',
-            tolerance: 0.05,
-            outputContext: undefined,
-            workspaceContext: undefined,
-            worker: undefined,
-            output: {
-              width: 0,
-              height: 0
-            }
-          },
-          frameRate: {
-            current: 0,
-            max: 60
+            frameRate: 60,
+            playing: false,
+            context: undefined
           },
           lastRender: 0
         },
         mounted(){
-          this.background.outputContext = this.$refs.outputCanvas.getContext('2d');
-          this.background.workspaceContext = this.$refs.workspaceCanvas.getContext('2d');
+          this.output.context = this.$refs.outputCanvas.getContext('2d');
+          this.background.context = this.$refs.workspaceCanvas.getContext('2d');
         },
         async created() {
           this.spawnWorker();
+          Object.entries(this.background.values).forEach(([key, value]) =>
+            this.$watch(`background.values.${key}`, (...args) => this.updateBackgroundSetting(key, ...args))
+          );
           this.resp = await fetch(`/api/session?room=${this.params.id}&code=${this.params.code}`).then(r => r.json())
           const { apiKey, sessionId, token, locked, access } = this.resp
           if(!access) window.location.replace(`/access-required?id=${this.params.id}&username=${this.params.username}`)
@@ -205,47 +202,25 @@
             })
             this.setLock(this.roomLocked, this.inputAccessCode)
           },
-          async toggleBackgroundForm({ target }) {
-            this.background.open = !this.background.open;
-            const content = this.$refs.backgroundContent;
-            const isOpen = content.classList.contains('opened');
-
-            if (isOpen) {
-              content.style.maxHeight = null;
-              await delay(1800);
-              content.classList.toggle('opened');
-            }
-            else {
-              content.classList.toggle('opened');
-              await delay(1);
-              content.style.maxHeight = content.scrollHeight + 'px'
-            }
-
-            target.textContent = !isOpen ? 'Close' : 'Customize Background';
-            if (!isOpen) return;
-
-            // Disable overlay when closing
-            this.background.forceOverlay = false;
-            this.background.worker.postMessage({
-              action: 'updateBackgroundSettings',
-              data: { key: 'overlay', value: false }
-            });
-          },
-          setFormEnabled(enabled){
-            [...this.$refs.backgroundForm.querySelectorAll('input, button')]
-              .filter(input => input.id !== 'image-input')
-              .forEach(input => input.disabled = !enabled)
-          },
           spawnWorker(){
             this.background.worker = new Worker('./worker.js');
             this.background.worker.addEventListener('message', ({ data: { buffer, width, height }}) => {
               // Only message sent from worker is the updated image data
               const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
-              this.background.outputContext.putImageData(imageData, 0, 0);
-              requestAnimationFrame(this.render);
+              this.output.context.putImageData(imageData, 0, 0);
+              requestAnimationFrame(this.renderFrame);
             });
           },
-          removeImage(){
+          async getUserStream(){
+            const inputStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            this.$refs.inputVideo.srcObject = inputStream;
+
+            const stream = this.$refs.outputCanvas.captureStream();
+            const audioTracks = (this.$refs.inputVideo.audioTracks || []);
+            if (audioTracks.length) stream.addTrack(audioTracks[0]);
+            return stream;
+          },
+          removeBackgroundImage(){
             this.background.image = null;
             this.background.worker.postMessage({ action: 'removeBackgroundImage' });
             this.$refs.imageInput.value = '';
@@ -276,14 +251,15 @@
             canvas.height = height;
 
             // Update form values
-            this.background.width = width;
-            this.background.height = height;
+            this.background.values.width = width;
+            this.background.values.height = height;
 
             // Save image for future resolution adjustments
             this.background.image = image;
 
             const context = canvas.getContext('2d');
             context.drawImage(image, 0, 0, width, height);
+
             const imageData = context.getImageData(0, 0, width, height);
             this.background.worker.postMessage({
               action: 'setBackgroundImage',
@@ -294,96 +270,60 @@
               }
             }, [imageData.data.buffer]);
           },
-          handleOutputFormChange({ target: input }){
-            const name = input.id.split('-input')[0].split('output-')[1];
-            switch(name){
-              case 'width':
-              case 'height':
-                const value = parseInt(input.value);
-                this.setOutputDimensions(
-                  name === 'width' ? value : this.background.output.width,
-                  name === 'height' ? value : this.background.output.height,
-                )
-                break;
-              case 'fps':
-                this.frameRate.current = parseInt(input.value);
-                break;
-            }
+          handleBackgroundImageChange({ target: { files }}){
+            if (!files.length) return;
+
+            const imageFile = files[0];
+
+            // Convert file to image
+            const image = new Image();
+            image.onload = () => this.setBackgroundImage(image, true);
+            image.src = URL.createObjectURL(imageFile);
           },
-          handleBackgroundFormChange({ target: input }){
-            const name = input.id.split('-input')[0];
+          updateBackgroundSetting(key, value){
+            if (value === '') return;
 
-            if (name === 'image') {
-                this.setFormEnabled(true)
-                const imageFile = input.files[0];
-                if (!imageFile) return;
-
-                // Convert file to image
-                const image = new Image();
-                image.onload = () => this.setBackgroundImage(image, true);
-                image.src = URL.createObjectURL(imageFile);
-                return;
-            }
-
-            switch(name){
+            switch(key){
               case 'x':
               case 'y':
-              case 'overlay':
-                // Post updated preference:
-                // value as number for x/y, true/false boolean for overlay
-                return this.background.worker.postMessage({
-                  action: 'updateBackgroundSettings',
-                  data: {
-                    key: name,
-                    value: name === 'overlay' ? input.checked : parseInt(input.value)
-                  }
-                });
+              case 'tolerance':
+              case 'previewOverlay':
               case 'darkestChroma':
               case 'lightestChroma':
                 return this.background.worker.postMessage({
                   action: 'updateBackgroundSettings',
-                  data: { key: name, value: hexToRGB(input.value) }
-                });
-              case 'tolerance':
-                return this.background.worker.postMessage({
-                  action: 'updateBackgroundSettings',
-                  data: { key: name, value: parseFloat(input.value) }
+                  data: { key, value }
                 });
               case 'width':
               case 'height':
                 // Update the dimensions of the image and update the image data
-                this.background.image[name] = parseInt(input.value);
+                this.background.image[key] = value;
                 return this.setBackgroundImage(this.background.image, false);
+              default:
+                console.error(`Unexpected background setting key: ${key}`);
             }
-          },
-          setOutputDimensions(width, height){
-            for (const element of [this.$refs.outputCanvas, this.$refs.workspaceCanvas, this.$refs.inputVideo]){
-              element.width = width;
-              element.height = height;
-            }
-            this.background.output.width = width;
-            this.background.output.height = height;
           },
           handleInputPlay(){
-            this.setOutputDimensions(this.$refs.inputVideo.videoWidth, this.$refs.inputVideo.videoHeight)
+            this.output.playing = true;
+            this.output.width = this.$refs.inputVideo.videoWidth;
+            this.output.height = this.$refs.inputVideo.videoHeight;
             // Get frame rate and start rendering
-            this.frameRate.max = this.$refs.inputVideo.srcObject.getVideoTracks()[0].getSettings().frameRate;
-            this.frameRate.current = this.frameRate.max;
-            this.render();
+            this.output.frameRate = this.$refs.inputVideo.srcObject.getVideoTracks()[0].getSettings().frameRate;
+            this.renderFrame();
           },
-          render(){
+          renderFrame(){
             // Prevent rendering faster then the frame rate of the input video
             const now = performance.now();
-            if (now - this.lastRender < 1000 / this.frameRate.current) return requestAnimationFrame(() => this.render());
+            if (now - this.lastRender < 1000 / this.output.frameRate) return requestAnimationFrame(this.renderFrame);
             this.lastRender = now;
 
             // Stop rendering if the video is stopped
-            if (this.$refs.inputVideo.ended || this.$refs.inputVideo.paused) return;
+            if (this.$refs.inputVideo.ended) return;
 
             if (this.background.image) {
               // Pass frame data to worker
-              this.background.workspaceContext.drawImage(this.$refs.inputVideo, 0, 0, this.background.output.width, this.background.output.height);
-              const imageData = this.background.workspaceContext.getImageData(0, 0, this.background.output.width, this.background.output.height);
+              this.background.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height);
+              const imageData = this.background.context.getImageData(0, 0, this.output.width, this.output.height);
               this.background.worker.postMessage({
                 action: 'applyGreenscreenEffect',
                 data: {
@@ -396,17 +336,37 @@
             }
 
             // There is no background, pass image directly to the output canvas
-            this.background.outputContext.drawImage(this.$refs.inputVideo, 0, 0, this.background.output.width, this.background.output.height);
-            requestAnimationFrame(() => this.render());
+            this.output.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height);
+            requestAnimationFrame(this.renderFrame);
+          }
+        },
+        watch: {
+          'output.playing'(playing){
+            if (playing) this.$refs.inputVideo.play();
+            else this.$refs.inputVideo.pause();
           },
-          async getUserStream(){
-            const inputStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            this.$refs.inputVideo.srcObject = inputStream;
+          async 'background.open'(open){
+            const content = this.$refs.backgroundContent;
 
-            const stream = this.$refs.outputCanvas.captureStream();
-            const audioTracks = (this.$refs.inputVideo.audioTracks || []);
-            if (audioTracks.length) stream.addTrack(audioTracks[0]);
-            return stream;
+            if (!open) {
+              content.style.maxHeight = null;
+              await delay(1800);
+              content.classList.toggle('opened');
+            }
+            else {
+              content.classList.toggle('opened');
+              await delay(1);
+              content.style.maxHeight = content.scrollHeight + 'px'
+              return;
+            }
+
+            // Disable overlay when closing
+            this.background.values.previewOverlay = false;
+            this.background.worker.postMessage({
+              action: 'updateBackgroundSettings',
+              data: { key: 'overlay', value: false }
+            });
+            this.output.playing = true;
           }
         },
         computed: {

@@ -29,6 +29,21 @@ const distanceBetween = (value, low, high) =>
 			: 0;
 
 
+/**
+ * Convert hexcode color to RGB
+ *
+ * From https://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
+ */
+const hexToRGB = hex => {
+	if (hex[0] == '#') hex = hex.substring(1);
+	const bigint = parseInt(hex, 16);
+	const r = (bigint >> 16) & 255;
+	const g = (bigint >> 8) & 255;
+	const b = bigint & 255;
+
+	return [r, g, b];
+}
+
 const ACTIONS = {
 	// Remove the background image entirely
 	removeBackgroundImage: () => {
@@ -52,7 +67,7 @@ const ACTIONS = {
 			case 'y':
 				backgroundY = value;
 				break;
-			case 'overlay':
+			case 'previewOverlay':
 				previewOverlay = value;
 				break;
 			case 'tolerance':
@@ -60,10 +75,12 @@ const ACTIONS = {
 				break;
 			case 'darkestChroma':
 			case 'lightestChroma':
-				const [r, g, b] = value;
+				const [r, g, b] = hexToRGB(value);
 				if (key == 'darkestChroma') ([darkestR, darkestG, darkestB] = [r, g, b])
 				else if (key === 'lightestChroma') ([lightestR, lightestG, lightestB] = [r, g, b])
 				break;
+			default:
+				console.error(`Unexpected background setting key: ${key}`);
 		}
 	},
 	// Apply the greenscreen effect to the provided imagedata
