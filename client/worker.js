@@ -53,10 +53,9 @@ const ACTIONS = {
 	},
 	// Set the background image
 	setBackgroundImage: ({ buffer, width, height }) => {
-		const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
-		backgroundPixels = imageData.data;
-		backgroundWidth = imageData.width;
-		backgroundHeight = imageData.height;
+		backgroundPixels = new Uint32Array(buffer);
+		backgroundWidth = width;
+		backgroundHeight = height;
 	},
 	// Update a background image related setting
 	updateBackgroundSettings: ({ key, value }) => {
@@ -85,34 +84,28 @@ const ACTIONS = {
 	},
 	// Apply the greenscreen effect to the provided imagedata
 	applyGreenscreenEffect: ({ buffer, width, height }) => {
-		const foregroundPixels = new Uint8ClampedArray(buffer);
+		// RGBA becomes ABGR
+		const fullForeground = new Uint32Array(buffer);
 
-		const length = backgroundPixels.length / 4;
-		for (let i = 0; i < length; i++){
-			const x = (i % backgroundWidth) + backgroundX;
-			const y = ~~(i / backgroundWidth) + backgroundY;
-			const foregroundI = y * (width * 4) + x * 4;
-			if (checkChroma && (
-					distanceBetween(foregroundPixels[foregroundI], darkestR, lightestR) +
-					distanceBetween(foregroundPixels[foregroundI + 1], darkestG, lightestG) +
-					distanceBetween(foregroundPixels[foregroundI + 2], darkestB, lightestB)
-					>= chromaTolerance
-				)
-			) continue;
-			// Override with background pixel
-
-			// Despite the expectancy:
-			//   foregroundPixels.set(backgroundPixels.slice(i, i + 4), foregroundI);
-			// does not offer better performance
-			const i4 = i * 4;
-			foregroundPixels[foregroundI] = backgroundPixels[i4];
-			foregroundPixels[foregroundI + 1] = backgroundPixels[i4 + 1];
-			foregroundPixels[foregroundI + 2] = backgroundPixels[i4 + 2];
+		for (let y = 0; y < backgroundHeight; y++){
+			for (let x = 0; x < backgroundWidth; x++){
+				const i = y * width + x;
+				if (checkChroma && (
+						distanceBetween((fullForeground[i]) & 0xff, darkestR, lightestR) +
+						distanceBetween((fullForeground[i] >> 8) & 0xff, darkestG, lightestG) +
+						distanceBetween((fullForeground[i] >> 16) & 0xff, darkestB, lightestB)
+						>= chromaTolerance
+					)
+				) continue;
+				// Override with background pixel
+				fullForeground[i] = backgroundPixels[y * backgroundWidth + x];
+				// To manipulate manually: ... = (a << 24) | (b << 16) | (g << 8) | r;
+			}
 		}
 		self.postMessage({
-			buffer: foregroundPixels.buffer,
+			buffer: fullForeground.buffer,
 			width, height
-		}, [foregroundPixels.buffer]);
+		}, [fullForeground.buffer]);
 	}
 }
 

@@ -204,11 +204,9 @@
           },
           spawnWorker(){
             this.background.worker = new Worker('./worker.js');
-            this.background.worker.addEventListener('message', ({ data: { buffer, width, height }}) => {
+            this.background.worker.addEventListener('message', ({ data }) => {
               // Only message sent from worker is the updated image data
-              const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
-              this.output.context.putImageData(imageData, 0, 0);
-              requestAnimationFrame(this.renderFrame);
+              this.output.context.putImageData(new ImageData(new Uint8ClampedArray(data.buffer), data.width, data.height), 0, 0);
             });
           },
           async getUserStream(){
@@ -323,20 +321,17 @@
             if (this.background.image) {
               // Pass frame data to worker
               this.background.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height);
-              const imageData = this.background.context.getImageData(0, 0, this.output.width, this.output.height);
+
+              const { data: { buffer }, width, height } = this.background.context.getImageData(0, 0, this.output.width, this.output.height);
               this.background.worker.postMessage({
                 action: 'applyGreenscreenEffect',
-                data: {
-                  buffer: imageData.data.buffer,
-                  width: imageData.width,
-                  height: imageData.height
-                }
-              }, [imageData.data.buffer]);
-              return;
+                data: { buffer, width, height }
+              }, [buffer]);
+            }
+            else{
+              this.output.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height);
             }
 
-            // There is no background, pass image directly to the output canvas
-            this.output.context.drawImage(this.$refs.inputVideo, 0, 0, this.output.width, this.output.height);
             requestAnimationFrame(this.renderFrame);
           }
         },
@@ -364,7 +359,7 @@
             this.background.values.previewOverlay = false;
             this.background.worker.postMessage({
               action: 'updateBackgroundSettings',
-              data: { key: 'overlay', value: false }
+              data: { key: 'previewOverlay', value: false }
             });
             this.output.playing = true;
           }
