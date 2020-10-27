@@ -70,7 +70,7 @@ const ACTIONS = {
 				checkChroma = !value
 				break
 			case 'tolerance':
-				chromaTolerance = value * 255 * 3
+				chromaTolerance = (value / 100) * 255 * 3
 				break
 			case 'darkestChroma':
 			case 'lightestChroma':
